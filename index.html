@@ -431,11 +431,13 @@ allPresenceRef.on('value', snap => {
   totalOnline = 0;
   snap.forEach(child => {
     const d = child.val();
+    console.log('[presence] child:', child.key, d);
     if (d && d.emotion) {
       presenceCounts[d.emotion] = (presenceCounts[d.emotion] || 0) + 1;
       totalOnline++;
     }
   });
+  console.log('[presence] total:', totalOnline, 'counts:', presenceCounts);
   updateLoungeText();
 });
 
