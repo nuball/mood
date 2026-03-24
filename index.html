@@ -402,21 +402,22 @@ let currentEmotion = EMOTIONS[local.current];
 const presenceRef = db.ref('presence/' + MY_UID);
 const connectedRef = db.ref('.info/connected');
 
-// .info/connected 패턴 — 실제 연결 확인 후 presence 등록
+// .info/connected 패턴 — 연결 감지 즉시 presence 등록 + 끊기면 자동 삭제
 connectedRef.on('value', snap => {
-  if (snap.val() === true) {
-    presenceRef.onDisconnect().remove();
-    presenceRef.set({ emotion: currentEmotion.id, t: firebase.database.ServerValue.TIMESTAMP });
-  }
+  if (snap.val() !== true) return;
+  // 먼저 onDisconnect 등록 후 set (순서 중요)
+  presenceRef.onDisconnect().remove().then(() => {
+    presenceRef.set({
+      emotion: currentEmotion.id,
+      t: firebase.database.ServerValue.TIMESTAMP
+    });
+  });
 });
 
 function setPresence(emotionId) {
-  // 연결된 상태면 즉시 업데이트
-  connectedRef.once('value', snap => {
-    if (snap.val() === true) {
-      presenceRef.onDisconnect().remove();
-      presenceRef.set({ emotion: emotionId, t: firebase.database.ServerValue.TIMESTAMP });
-    }
+  presenceRef.set({
+    emotion: emotionId,
+    t: firebase.database.ServerValue.TIMESTAMP
   });
 }
 
