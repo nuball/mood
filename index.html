@@ -10,6 +10,12 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 
+  <!-- Vercel Web Analytics -->
+  <script>
+    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+  </script>
+  <script defer src="/_vercel/insights/script.js"></script>
+
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -369,7 +375,7 @@ const EMOTIONS = [
   { id:'tired',   emoji:'😴', label:'피곤', c1:'#555566', c2:'#222233', bar:'#444455', text:'#e0e0f0', floatEmoji:'💤', quick:['피곤해','잠온다','지쳤어','잘자요'] },
 ];
 
-/* ══════════════════════════════════════
+/* ══���═══════════════════════════════════
    사용자 식별
 ══════════════════════════════════════ */
 function getUID() {
