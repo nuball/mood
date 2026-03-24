@@ -533,7 +533,6 @@ function render(anim = false) {
   document.getElementById('bg').style.background =
     `linear-gradient(155deg, ${e.c2} 0%, ${e.c1} 55%, ${e.c1} 100%)`;
   document.body.style.color = e.text;
-  updateLoungeText();
   renderQuickBtns();
 }
 
@@ -564,11 +563,24 @@ function changeEmotion(idx, anim = false) {
   local.current = idx;
   saveLocal();
   currentEmotion = EMOTIONS[idx];
-  setPresence(currentEmotion.id);
+  setPresence(currentEmotion.id);       // Firebase 업데이트
   subscribeChatChannel(currentEmotion.id);
   document.getElementById('floatLayer').innerHTML = '';
   closeQuick();
   render(anim);
+  // Firebase presence 업데이트 후 카운트 즉시 반영
+  allPresenceRef.once('value', snap => {
+    presenceCounts = {};
+    totalOnline = 0;
+    snap.forEach(child => {
+      const d = child.val();
+      if (d && d.emotion) {
+        presenceCounts[d.emotion] = (presenceCounts[d.emotion] || 0) + 1;
+        totalOnline++;
+      }
+    });
+    updateLoungeText();
+  });
 }
 
 /* ══════════════════════════════════════
