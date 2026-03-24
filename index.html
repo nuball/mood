@@ -130,9 +130,9 @@
     }
 
     .change-btn {
-      margin-top: 12px;
+      margin-top: 28px;
       background: none; border: none; outline: none;
-      border-radius: 50%; width: 40px; height: 40px;
+      border-radius: 50%; width: 56px; height: 56px;
       display: grid; place-items: center;
       cursor: pointer; color: inherit; opacity: 0.6;
       transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -304,7 +304,7 @@
     <span class="emoji-main" id="mainEmoji">😊</span>
   </div>
   <button class="change-btn" id="changeBtn" aria-label="감정 바꾸기">
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74"/><path d="M3 3v4h4"/>
     </svg>
   </button>
@@ -399,11 +399,24 @@ let currentEmotion = EMOTIONS[local.current];
    Presence — 접속자 감정 추적
 ══════════════════════════════════════ */
 const presenceRef = db.ref('presence/' + MY_UID);
+const connectedRef = db.ref('.info/connected');
+
+// .info/connected 패턴 — 실제 연결 확인 후 presence 등록
+connectedRef.on('value', snap => {
+  if (snap.val() === true) {
+    presenceRef.onDisconnect().remove();
+    presenceRef.set({ emotion: currentEmotion.id, t: firebase.database.ServerValue.TIMESTAMP });
+  }
+});
 
 function setPresence(emotionId) {
-  presenceRef.set({ emotion: emotionId, t: firebase.database.ServerValue.TIMESTAMP });
-  // 연결 끊기면 자동 삭제
-  presenceRef.onDisconnect().remove();
+  // 연결된 상태면 즉시 업데이트
+  connectedRef.once('value', snap => {
+    if (snap.val() === true) {
+      presenceRef.onDisconnect().remove();
+      presenceRef.set({ emotion: emotionId, t: firebase.database.ServerValue.TIMESTAMP });
+    }
+  });
 }
 
 // 전체 접속자 / 감정별 인원 실시간 구독
@@ -427,7 +440,7 @@ allPresenceRef.on('value', snap => {
 function updateLoungeText() {
   const here = presenceCounts[currentEmotion.id] || 0;
   document.getElementById('loungeText').textContent =
-    `지금 총 ${totalOnline}명 중 ${here}명이 함께 ${currentEmotion.label}을(를) 느끼고 있어요`;
+    `지금 총 ${totalOnline}명 중 ${here}명이 함께 ${currentEmotion.label}을 느끼고 있어요`;
 }
 
 /* ══════════════════════════════════════
