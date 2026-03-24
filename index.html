@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>무드</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  <!-- Firebase compat SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      height: 100dvh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      transition: color 0.5s ease;
+    }
+
+    #bg {
+      position: fixed; inset: 0; z-index: 0;
+      transition: background 0.7s ease;
+    }
+    #bg::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+      pointer-events: none;
+    }
+
+    /* ── 헤더 ── */
+    header {
+      position: fixed; top: 0; left: 0; right: 0;
+      padding: 18px 22px 0;
+      display: flex; justify-content: flex-start; align-items: center;
+      z-index: 300;
+    }
+    .menu-btn {
+      background: rgba(255,255,255,0.28);
+      border: 1px solid rgba(255,255,255,0.42);
+      border-radius: 50%; width: 40px; height: 40px;
+      display: grid; place-items: center;
+      cursor: pointer; backdrop-filter: blur(10px); color: inherit;
+      font-size: 20px; font-weight: 700;
+      transition: transform 0.15s;
+      line-height: 1; padding-bottom: 3px;
+    }
+    .menu-btn:active { transform: scale(0.9); }
+
+    /* ── 드롭다운 ── */
+    .dropdown {
+      position: fixed; top: 68px; left: 22px;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-radius: 16px; padding: 6px 0;
+      min-width: 160px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+      z-index: 400;
+      opacity: 0; visibility: hidden;
+      transform: translateY(-8px) scale(0.96);
+      transform-origin: top left;
+      transition: opacity 0.2s, transform 0.2s, visibility 0.2s;
+      color: #222;
+    }
+    .dropdown.open { opacity: 1; visibility: visible; transform: translateY(0) scale(1); }
+    .menu-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 18px;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer; border-radius: 10px; margin: 0 4px;
+      transition: background 0.15s;
+    }
+    .menu-item:active { background: rgba(0,0,0,0.06); }
+    .mi-icon { font-size: 16px; width: 20px; text-align: center; }
+    .menu-divider { height: 1px; background: rgba(0,0,0,0.07); margin: 4px 14px; }
+    .dd-overlay { position: fixed; inset: 0; z-index: 350; display: none; }
+    .dd-overlay.active { display: block; }
+
+    /* ── 메인 ── */
+    main {
+      position: relative; z-index: 10; flex: 1;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      width: 100%; padding: 60px 0 180px;
+    }
+
+    .emoji-wrap {
+      position: relative; display: flex;
+      align-items: center; justify-content: center;
+      cursor: pointer; user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .emoji-main {
+      font-size: clamp(72px, 16vh, 140px); line-height: 1;
+      display: block; position: relative; z-index: 2;
+      transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
+      filter: drop-shadow(0 10px 24px rgba(0,0,0,0.06));
+    }
+    .emoji-wrap:active .emoji-main { transform: scale(0.88); }
+
+    .ring {
+      position: absolute; border-radius: 50%;
+      border: 2px solid currentColor; opacity: 0.35;
+      pointer-events: none;
+      animation: ringExpand 0.55s ease-out forwards;
+    }
+    @keyframes ringExpand {
+      from { width: 0; height: 0; opacity: 0.5; }
+      to   { width: 240px; height: 240px; opacity: 0; }
+    }
+
+    .count-display {
+      margin-bottom: 8px;
+      font-family: 'Space Mono', monospace;
+      font-size: 18px; font-weight: 700;
+      line-height: 1; opacity: 0.6; letter-spacing: -0.5px;
+    }
+    .count-display.bump { animation: countBump 0.22s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    @keyframes countBump {
+      0%  { transform: scale(1); }
+      50% { transform: scale(1.32); }
+      100%{ transform: scale(1); }
+    }
+
+    .change-btn {
+      margin-top: 12px;
+      background: none; border: none; outline: none;
+      border-radius: 50%; width: 40px; height: 40px;
+      display: grid; place-items: center;
+      cursor: pointer; color: inherit; opacity: 0.6;
+      transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .change-btn:active { transform: rotate(180deg) scale(0.9); }
+
+    /* ── 플로팅 레이어 ── */
+    #floatLayer { position: fixed; inset: 0; pointer-events: none; z-index: 80; }
+    .float-item {
+      position: absolute;
+      font-size: 13px; font-weight: 600;
+      white-space: nowrap; opacity: 0;
+      animation: floatRise var(--dur, 3s) ease-out forwards;
+    }
+    .float-item.is-emoji { font-size: 22px; }
+    @keyframes floatRise {
+      0%   { transform: translate(-50%, 0); opacity: 0; }
+      10%  { opacity: 1; }
+      80%  { opacity: 0.7; }
+      100% { transform: translate(-50%, var(--rise,-180px)); opacity: 0; }
+    }
+
+    /* ── 하단 ── */
+    .bottom-area {
+      position: fixed; bottom: 28px;
+      left: 50%; transform: translateX(-50%);
+      width: 88%; max-width: 340px;
+      z-index: 100;
+      display: flex; flex-direction: column;
+      align-items: center; gap: 10px;
+    }
+
+    /* 퀵 팝업 */
+    .input-area { width: 100%; position: relative; }
+    .quick-popup {
+      position: absolute;
+      bottom: calc(100% + 8px); right: 0;
+      display: flex; gap: 6px;
+      background: rgba(255,255,255,0.18);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 100px; padding: 6px 10px;
+      opacity: 0; visibility: hidden;
+      transform: translateY(6px);
+      transition: opacity 0.2s, transform 0.2s, visibility 0.2s;
+      white-space: nowrap; z-index: 10;
+    }
+    .quick-popup.open { opacity: 1; visibility: visible; transform: translateY(0); }
+    .quick-btn {
+      background: none; border: none; outline: none;
+      padding: 4px 2px;
+      font-family: 'Noto Sans KR', sans-serif;
+      font-size: 12px; font-weight: 600;
+      color: inherit; cursor: pointer; opacity: 0.85;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .quick-btn:not(:last-child)::after {
+      content: '';
+      display: inline-block;
+      width: 1px; height: 10px;
+      background: currentColor; opacity: 0.25;
+      margin-left: 8px; vertical-align: middle;
+    }
+    .quick-btn:active { opacity: 1; transform: scale(0.93); }
+
+    /* 입력 행 */
+    .input-row {
+      width: 100%;
+      background: rgba(255,255,255,0.3);
+      backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+      border: 1px solid rgba(255,255,255,0.48);
+      border-radius: 100px;
+      display: flex; align-items: center;
+      padding: 0 6px 0 16px; gap: 6px;
+    }
+    .msg-input {
+      flex: 1; background: none; border: none; outline: none;
+      font-family: 'Noto Sans KR', sans-serif;
+      font-size: 13px; font-weight: 500;
+      color: inherit; padding: 13px 0;
+    }
+    .msg-input::placeholder { opacity: 0.42; }
+    .quick-toggle {
+      flex-shrink: 0; background: none; border: none; outline: none;
+      width: 32px; height: 32px;
+      display: grid; place-items: center;
+      cursor: pointer; color: inherit; opacity: 0.45;
+      border-radius: 50%;
+      transition: opacity 0.2s, transform 0.3s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .quick-toggle.active { opacity: 0.9; transform: rotate(45deg); }
+
+    .lounge-text {
+      font-size: 11px; font-weight: 500;
+      opacity: 0.4; letter-spacing: 0.2px; text-align: center; line-height: 1.6;
+    }
+
+    /* ── 바텀시트 ── */
+    .sheet-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.1);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      z-index: 500; display: flex; align-items: flex-end; justify-content: center;
+      opacity: 0; visibility: hidden; transition: opacity 0.3s, visibility 0.3s;
+    }
+    .sheet-overlay.open { opacity: 1; visibility: visible; }
+    .bottom-sheet {
+      background: rgba(255,255,255,0.93);
+      width: 100%; max-width: 480px;
+      border-radius: 28px 28px 0 0;
+      padding: 24px 26px 48px;
+      transform: translateY(100%);
+      transition: transform 0.38s cubic-bezier(0.32, 0.72, 0, 1);
+      box-shadow: 0 -8px 30px rgba(0,0,0,0.07); color: #222;
+    }
+    .sheet-overlay.open .bottom-sheet { transform: translateY(0); }
+    .sheet-handle {
+      width: 36px; height: 4px; background: rgba(0,0,0,0.1);
+      border-radius: 2px; margin: 0 auto 20px;
+    }
+    .sheet-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; text-align: center; }
+    .sheet-date  { font-size: 11px; opacity: 0.35; text-align: center; margin-bottom: 20px; }
+    .stat-row { display: flex; align-items: center; gap: 10px; margin-bottom: 13px; }
+    .stat-emoji { font-size: 18px; width: 26px; text-align: center; flex-shrink: 0; }
+    .stat-name  { font-size: 11px; font-weight: 500; width: 28px; flex-shrink: 0; opacity: 0.5; }
+    .bar-track  { flex: 1; height: 7px; background: rgba(0,0,0,0.06); border-radius: 4px; overflow: hidden; }
+    .bar-fill   { height: 100%; border-radius: 4px; width: 0%; transition: width 0.55s cubic-bezier(0.16,1,0.3,1); }
+    .stat-meta  {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px; font-weight: 700;
+      width: 72px; text-align: right; flex-shrink: 0; opacity: 0.7;
+    }
+    .total-line { text-align: center; margin-top: 16px; font-size: 11px; opacity: 0.4; }
+
+    @keyframes emojiSwitch {
+      0%  { transform: scale(1); opacity: 1; }
+      30% { transform: scale(0.45) rotate(-10deg); opacity: 0; }
+      65% { transform: scale(0.45) rotate(10deg); opacity: 0; }
+      100%{ transform: scale(1); opacity: 1; }
+    }
+    .emoji-main.switching { animation: emojiSwitch 0.38s cubic-bezier(0.16,1,0.3,1) forwards; }
+  </style>
+</head>
+
+<body>
+<div id="bg"></div>
+<div id="floatLayer"></div>
+
+<header>
+  <button class="menu-btn" id="menuBtn">···</button>
+</header>
+
+<div class="dd-overlay" id="ddOverlay"></div>
+<div class="dropdown" id="dropdown">
+  <div class="menu-item" id="mi-stats"><span class="mi-icon">📊</span> 오늘 감정</div>
+  <div class="menu-divider"></div>
+  <div class="menu-item" id="mi-share"><span class="mi-icon">🔗</span> 공유하기</div>
+  <div class="menu-divider"></div>
+  <div class="menu-item" id="mi-contact"><span class="mi-icon">💬</span> 문의·후원</div>
+  <div class="menu-divider"></div>
+  <div class="menu-item" id="mi-report"><span class="mi-icon">🚨</span> 신고하기</div>
+</div>
+
+<main>
+  <div class="count-display" id="countDisplay">0</div>
+  <div class="emoji-wrap" id="emojiWrap">
+    <span class="emoji-main" id="mainEmoji">😊</span>
+  </div>
+  <button class="change-btn" id="changeBtn" aria-label="감정 바꾸기">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74"/><path d="M3 3v4h4"/>
+    </svg>
+  </button>
+</main>
+
+<div class="bottom-area">
+  <div class="input-area" id="inputArea">
+    <div class="quick-popup" id="quickPopup"></div>
+    <div class="input-row">
+      <input class="msg-input" id="msgInput" type="text"
+             placeholder="지금 마음을 적어보세요" autocomplete="off" maxlength="40" />
+      <button class="quick-toggle" id="quickToggle">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+          <line x1="9" y1="9" x2="9.01" y2="9"/>
+          <line x1="15" y1="9" x2="15.01" y2="9"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+  <p class="lounge-text" id="loungeText">연결 중...</p>
+</div>
+
+<!-- 오늘 감정 시트 -->
+<div class="sheet-overlay" id="sheetOverlay">
+  <div class="bottom-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">오늘의 감정 현황</div>
+    <div class="sheet-date" id="sheetDate"></div>
+    <div id="statsContent"></div>
+    <p class="total-line" id="totalLine"></p>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════
+   Firebase 초기화
+══════════════════════════════════════ */
+const firebaseConfig = {
+  apiKey: "AIzaSyCBlIU0KG7ubxx9MXPBjCwZDqtpvz3VBHI",
+  authDomain: "mood-7848d.firebaseapp.com",
+  databaseURL: "https://mood-7848d-default-rtdb.firebaseio.com",
+  projectId: "mood-7848d",
+  storageBucket: "mood-7848d.firebasestorage.app",
+  messagingSenderId: "69131981368",
+  appId: "1:69131981368:web:b35486af2908d5b4c08ccd"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* ══════════════════════════════════════
+   감정 데이터
+══════════════════════════════════════ */
+const EMOTIONS = [
+  { id:'happy',   emoji:'😊', label:'행복', c1:'#ffd6d9', c2:'#ffb4bf', bar:'#f7a8b5', text:'#5c3d42', floatEmoji:'💗', quick:['행복해','뿌듯해','사랑해','고마워'] },
+  { id:'neutral', emoji:'😐', label:'보통', c1:'#e8eef4', c2:'#cfd8e4', bar:'#94a3b8', text:'#3a4a5c', floatEmoji:'☁️', quick:['평범해','심심해','그냥뭐','............'] },
+  { id:'excited', emoji:'🤩', label:'기쁨',  c1:'#fff3b0', c2:'#ffd84a', bar:'#f5c400', text:'#6b4c00', floatEmoji:'⭐', quick:['최고야','즐거워','기대돼','신난다'] },
+  { id:'angry',   emoji:'😡', label:'짜증', c1:'#ffaaaa', c2:'#ff4444', bar:'#cc0000', text:'#5a0000', floatEmoji:'🔥', quick:['짜증나','왜저래','열받아','아진짜'] },
+  { id:'sad',     emoji:'😢', label:'우울', c1:'#99bbff', c2:'#2255cc', bar:'#1133aa', text:'#0a0a40', floatEmoji:'🌧️', quick:['우울해','힘들어','외로워','ㅠ_ㅠ'] },
+  { id:'tired',   emoji:'😴', label:'피곤', c1:'#555566', c2:'#222233', bar:'#444455', text:'#e0e0f0', floatEmoji:'💤', quick:['피곤해','잠온다','지쳤어','잘자요'] },
+];
+
+/* ══════════════════════════════════════
+   사용자 식별
+══════════════════════════════════════ */
+function getUID() {
+  let uid = localStorage.getItem('_mood_uid');
+  if (!uid) {
+    uid = 'u_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+    localStorage.setItem('_mood_uid', uid);
+  }
+  return uid;
+}
+const MY_UID = getUID();
+
+/* ══════════════════════════════════════
+   날짜 / 로컬 상태
+══════════════════════════════════════ */
+function todayKey() { return new Date().toISOString().slice(0, 10); }
+
+const LOC_KEY = 'mood_local_v1';
+let local = (() => {
+  try { const s = JSON.parse(localStorage.getItem(LOC_KEY)); if (s) return s; } catch(_) {}
+  return { current: 0 };
+})();
+function saveLocal() { localStorage.setItem(LOC_KEY, JSON.stringify(local)); }
+
+let currentEmotion = EMOTIONS[local.current];
+
+/* ══════════════════════════════════════
+   Presence — 접속자 감정 추적
+══════════════════════════════════════ */
+const presenceRef = db.ref('presence/' + MY_UID);
+
+function setPresence(emotionId) {
+  presenceRef.set({ emotion: emotionId, t: firebase.database.ServerValue.TIMESTAMP });
+  // 연결 끊기면 자동 삭제
+  presenceRef.onDisconnect().remove();
+}
+
+// 전체 접속자 / 감정별 인원 실시간 구독
+const allPresenceRef = db.ref('presence');
+let presenceCounts = {};  // { happy: 3, sad: 1, ... }
+let totalOnline = 0;
+
+allPresenceRef.on('value', snap => {
+  presenceCounts = {};
+  totalOnline = 0;
+  snap.forEach(child => {
+    const d = child.val();
+    if (d && d.emotion) {
+      presenceCounts[d.emotion] = (presenceCounts[d.emotion] || 0) + 1;
+      totalOnline++;
+    }
+  });
+  updateLoungeText();
+});
+
+function updateLoungeText() {
+  const here = presenceCounts[currentEmotion.id] || 0;
+  document.getElementById('loungeText').textContent =
+    `지금 총 ${totalOnline}명 중 ${here}명이 함께 ${currentEmotion.label}을(를) 느끼고 있어요`;
+}
+
+/* ══════════════════════════════════════
+   실시간 채팅 — 감정별 채널
+══════════════════════════════════════ */
+let chatListener = null;
+let lastSentTime = 0;
+const CHAT_THROTTLE = 2000; // 2초에 1개
+
+function subscribeChatChannel(emotionId) {
+  // 이전 리스너 해제
+  if (chatListener) {
+    db.ref('chats/' + chatListener).off('child_added');
+    chatListener = null;
+  }
+  chatListener = emotionId;
+  const chatRef = db.ref('chats/' + emotionId);
+
+  // 구독 시작 이후 새 메시지만 수신
+  const since = Date.now();
+  chatRef.orderByChild('t').startAt(since).on('child_added', snap => {
+    const msg = snap.val();
+    if (!msg) return;
+    // 내가 보낸 메시지는 이미 로컬에서 띄웠으니 중복 방지
+    if (msg.uid !== MY_UID) {
+      spawnFloat(msg.text, false, true);
+      if (Math.random() < 0.20) {
+        setTimeout(() => spawnFloat(currentEmotion.floatEmoji, true), 200 + Math.random() * 400);
+      }
+    }
+  });
+}
+
+function sendChat(text) {
+  const now = Date.now();
+  if (now - lastSentTime < CHAT_THROTTLE) return; // 도배 방지
+  lastSentTime = now;
+
+  db.ref('chats/' + currentEmotion.id).push({
+    text,
+    uid: MY_UID,
+    t: firebase.database.ServerValue.TIMESTAMP
+  });
+
+  // 오래된 메시지 정리 (최근 200개만 유지) — 비동기
+  db.ref('chats/' + currentEmotion.id).orderByChild('t')
+    .limitToFirst(1).once('value', snap => {
+      snap.forEach(child => {
+        db.ref('chats/' + currentEmotion.id).orderByChild('t')
+          .endBefore(Date.now() - 60000).limitToFirst(50).once('value', old => {
+            old.forEach(c => c.ref.remove());
+          });
+      });
+    });
+}
+
+/* ══════════════════════════════════════
+   일별 탭 카운팅
+══════════════════════════════════════ */
+function incrementTap(emotionId) {
+  db.ref('stats/' + todayKey() + '/' + emotionId)
+    .transaction(val => (val || 0) + 1);
+}
+
+// 로컬 표시용 카운트 (내 탭만)
+const localCounts = (() => {
+  try { return JSON.parse(localStorage.getItem('_mood_counts_' + todayKey()) || '{}'); } catch(_) { return {}; }
+})();
+function saveLocalCounts() {
+  localStorage.setItem('_mood_counts_' + todayKey(), JSON.stringify(localCounts));
+}
+
+/* ══════════════════════════════════════
+   렌더
+══════════════════════════════════════ */
+function render(anim = false) {
+  const e = currentEmotion;
+  const el = document.getElementById('mainEmoji');
+  if (anim) {
+    el.classList.remove('switching'); void el.offsetWidth;
+    el.classList.add('switching');
+    setTimeout(() => el.classList.remove('switching'), 380);
+  }
+  el.textContent = e.emoji;
+  document.getElementById('countDisplay').textContent = localCounts[e.id] || 0;
+  document.getElementById('bg').style.background =
+    `linear-gradient(155deg, ${e.c2} 0%, ${e.c1} 55%, ${e.c1} 100%)`;
+  document.body.style.color = e.text;
+  updateLoungeText();
+  renderQuickBtns();
+}
+
+function renderQuickBtns() {
+  const e = currentEmotion;
+  const row = document.getElementById('quickPopup');
+  row.innerHTML = '';
+  e.quick.forEach(q => {
+    const btn = document.createElement('button');
+    btn.className = 'quick-btn';
+    btn.textContent = q;
+    btn.addEventListener('click', ev => {
+      ev.stopPropagation();
+      spawnFloat(q, false);
+      sendChat(q);
+      closeQuick();
+      if (Math.random() < 0.20)
+        setTimeout(() => spawnFloat(e.floatEmoji, true), 200 + Math.random() * 400);
+    });
+    row.appendChild(btn);
+  });
+}
+
+/* ══════════════════════════════════════
+   감정 변경
+══════════════════════════════════════ */
+function changeEmotion(idx, anim = false) {
+  local.current = idx;
+  saveLocal();
+  currentEmotion = EMOTIONS[idx];
+  setPresence(currentEmotion.id);
+  subscribeChatChannel(currentEmotion.id);
+  document.getElementById('floatLayer').innerHTML = '';
+  closeQuick();
+  render(anim);
+}
+
+/* ══════════════════════════════════════
+   이모지 클릭
+══════════════════════════════════════ */
+document.getElementById('emojiWrap').addEventListener('click', ev => {
+  ev.stopPropagation();
+  localCounts[currentEmotion.id] = (localCounts[currentEmotion.id] || 0) + 1;
+  saveLocalCounts();
+  incrementTap(currentEmotion.id); // Firebase에 누적
+
+  const d = document.getElementById('countDisplay');
+  d.textContent = localCounts[currentEmotion.id];
+  d.classList.remove('bump'); void d.offsetWidth; d.classList.add('bump');
+
+  const ring = document.createElement('div');
+  ring.className = 'ring';
+  document.getElementById('emojiWrap').appendChild(ring);
+  setTimeout(() => ring.remove(), 560);
+});
+
+/* 감정 바꾸기 버튼 */
+document.getElementById('changeBtn').addEventListener('click', ev => {
+  ev.stopPropagation();
+  changeEmotion((local.current + 1) % EMOTIONS.length, true);
+});
+
+/* 스와이프 */
+let tx0 = 0;
+document.addEventListener('touchstart', e => { tx0 = e.touches[0].clientX; }, { passive: true });
+document.addEventListener('touchend', e => {
+  if (document.getElementById('sheetOverlay').classList.contains('open')) return;
+  const dx = e.changedTouches[0].clientX - tx0;
+  if (Math.abs(dx) < 55) return;
+  changeEmotion((local.current + (dx < 0 ? 1 : -1) + EMOTIONS.length) % EMOTIONS.length, true);
+}, { passive: true });
+
+/* ══════════════════════════════════════
+   플로팅 메시지
+══════════════════════════════════════ */
+function spawnFloat(text, isEmoji = false) {
+  const layer = document.getElementById('floatLayer');
+  const inputRect = document.getElementById('inputArea').getBoundingClientRect();
+
+  const el = document.createElement('div');
+  el.className = 'float-item' + (isEmoji ? ' is-emoji' : '');
+  el.textContent = text;
+
+  const areaW = inputRect.width;
+  const xBase = inputRect.left + areaW / 2;
+  const jitter = (Math.random() - 0.5) * areaW * 0.8;
+  el.style.left = `${xBase + jitter}px`;
+  el.style.top  = `${inputRect.top - 10}px`;
+
+  const rise = 160 + Math.random() * 120;
+  const dur  = 2.5 + Math.random() * 1.2;
+  el.style.setProperty('--rise', `-${rise}px`);
+  el.style.setProperty('--dur', `${dur}s`);
+
+  layer.appendChild(el);
+  setTimeout(() => el.remove(), dur * 1000);
+}
+
+/* ══════════════════════════════════════
+   채팅 입력
+══════════════════════════════════════ */
+function sendMessage() {
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim(); if (!text) return;
+  spawnFloat(text, false);   // 내 화면 즉시 표시
+  sendChat(text);             // Firebase로 전송
+  if (Math.random() < 0.20)
+    setTimeout(() => spawnFloat(currentEmotion.floatEmoji, true), 200 + Math.random() * 400);
+  input.value = '';
+  input.focus();
+  closeQuick();
+}
+
+document.getElementById('msgInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') sendMessage();
+});
+document.getElementById('msgInput').addEventListener('click', e => e.stopPropagation());
+
+/* 퀵 토글 */
+const quickToggle = document.getElementById('quickToggle');
+const quickPopup  = document.getElementById('quickPopup');
+function toggleQuick(ev) {
+  ev.stopPropagation();
+  const open = quickPopup.classList.toggle('open');
+  quickToggle.classList.toggle('active', open);
+}
+function closeQuick() {
+  quickPopup.classList.remove('open');
+  quickToggle.classList.remove('active');
+}
+quickToggle.addEventListener('click', toggleQuick);
+
+/* ══════════════════════════════════════
+   메뉴
+══════════════════════════════════════ */
+const menuBtn  = document.getElementById('menuBtn');
+const dropdown = document.getElementById('dropdown');
+const ddOv     = document.getElementById('ddOverlay');
+
+function openMenu(ev) { ev.stopPropagation(); dropdown.classList.add('open'); ddOv.classList.add('active'); }
+function closeMenu()  { dropdown.classList.remove('open'); ddOv.classList.remove('active'); }
+menuBtn.addEventListener('click', openMenu);
+ddOv.addEventListener('click', closeMenu);
+
+/* 오늘 감정 */
+document.getElementById('mi-stats').addEventListener('click', () => {
+  closeMenu();
+  openStats();
+});
+
+/* 공유하기 */
+document.getElementById('mi-share').addEventListener('click', () => {
+  closeMenu();
+  if (navigator.share) {
+    navigator.share({ title: '무드', url: location.href }).catch(() => {});
+  } else {
+    navigator.clipboard?.writeText(location.href);
+    alert('링크가 복사되었습니다.');
+  }
+});
+
+/* 문의·후원 */
+document.getElementById('mi-contact').addEventListener('click', () => {
+  closeMenu();
+  alert('문의·후원: mood@example.com');
+});
+
+/* 신고하기 */
+document.getElementById('mi-report').addEventListener('click', () => {
+  closeMenu();
+  const reason = prompt('신고 사유를 입력해주세요 (욕설 / 도배 / 기타)');
+  if (reason) {
+    db.ref('reports').push({ uid: MY_UID, reason, t: firebase.database.ServerValue.TIMESTAMP });
+    alert('신고가 접수되었습니다.\n검토 후 조치하겠습니다.');
+  }
+});
+
+/* ══════════════════════════════════════
+   오늘 감정 시트 — Firebase stats 읽기
+══════════════════════════════════════ */
+function openStats() {
+  const key = todayKey();
+  document.getElementById('sheetDate').textContent = key.replace(/-/g, '. ');
+
+  db.ref('stats/' + key).once('value', snap => {
+    const data = snap.val() || {};
+    const total = EMOTIONS.reduce((s, e) => s + (data[e.id] || 0), 0);
+    const content = document.getElementById('statsContent');
+    content.innerHTML = '';
+
+    EMOTIONS.forEach(e => {
+      const cnt = data[e.id] || 0;
+      const pct = total > 0 ? Math.round(cnt / total * 100) : 0;
+      const row = document.createElement('div');
+      row.className = 'stat-row';
+      row.innerHTML = `
+        <span class="stat-emoji">${e.emoji}</span>
+        <span class="stat-name">${e.label}</span>
+        <div class="bar-track">
+          <div class="bar-fill" style="background:${e.bar}" data-pct="${pct}"></div>
+        </div>
+        <span class="stat-meta">${pct}% (${cnt})</span>`;
+      content.appendChild(row);
+    });
+
+    document.getElementById('totalLine').textContent = `전체 ${total}번 탭했어요`;
+    document.getElementById('sheetOverlay').classList.add('open');
+
+    requestAnimationFrame(() => {
+      document.querySelectorAll('.bar-fill').forEach(b => { b.style.width = b.dataset.pct + '%'; });
+    });
+  });
+}
+
+function closeStats() { document.getElementById('sheetOverlay').classList.remove('open'); }
+document.getElementById('sheetOverlay').addEventListener('click', ev => {
+  if (ev.target === document.getElementById('sheetOverlay')) closeStats();
+});
+
+/* ══════════════════════════════════════
+   초기화
+══════════════════════════════════════ */
+setPresence(currentEmotion.id);
+subscribeChatChannel(currentEmotion.id);
+render();
+</script>
+</body>
+</html>
