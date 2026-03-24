@@ -102,8 +102,19 @@
       display: block; position: relative; z-index: 2;
       transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
       filter: drop-shadow(0 10px 24px rgba(0,0,0,0.06));
+      animation: emojiFloat 3.6s ease-in-out infinite;
+      transform-origin: center bottom;
     }
-    .emoji-wrap:active .emoji-main { transform: scale(0.88); }
+    .emoji-wrap:active .emoji-main {
+      animation: none;
+      transform: scale(0.88);
+    }
+    @keyframes emojiFloat {
+      0%   { transform: translateY(0px) rotate(-1deg); }
+      30%  { transform: translateY(-8px) rotate(1deg); }
+      60%  { transform: translateY(-4px) rotate(-0.5deg); }
+      100% { transform: translateY(0px) rotate(-1deg); }
+    }
 
     .ring {
       position: absolute; border-radius: 50%;
@@ -128,6 +139,8 @@
       50% { transform: scale(1.32); }
       100%{ transform: scale(1); }
     }
+
+
 
     .change-btn {
       margin-top: 28px;
@@ -270,12 +283,20 @@
     .total-line { text-align: center; margin-top: 16px; font-size: 11px; opacity: 0.4; }
 
     @keyframes emojiSwitch {
-      0%  { transform: scale(1); opacity: 1; }
-      30% { transform: scale(0.45) rotate(-10deg); opacity: 0; }
-      65% { transform: scale(0.45) rotate(10deg); opacity: 0; }
-      100%{ transform: scale(1); opacity: 1; }
+      0%   { transform: scale(1); opacity: 1; }
+      30%  { transform: scale(0.45) rotate(-10deg); opacity: 0; }
+      65%  { transform: scale(0.45) rotate(10deg); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
     }
     .emoji-main.switching { animation: emojiSwitch 0.38s cubic-bezier(0.16,1,0.3,1) forwards; }
+
+    /* ── 배경 파티클 캔버스 ── */
+    #particleCanvas {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0.55;
+    }
   </style>
   <script defer src="/_vercel/insights/script.js"></script>
 </head>
@@ -283,6 +304,7 @@
 <body>
 <div id="bg"></div>
 <div id="floatLayer"></div>
+<canvas id="particleCanvas"></canvas>
 
 <header>
   <button class="menu-btn" id="menuBtn">···</button>
@@ -342,6 +364,91 @@
 </div>
 
 <script>
+
+/* ══════════════════════════════════════
+   배경 파티클
+══════════════════════════════════════ */
+const canvas = document.getElementById('particleCanvas');
+const ctx = canvas.getContext('2d');
+
+const PARTICLE_DEFS = {
+  happy:   { symbols: ['💗','🌸'], count: 12, speed: 0.4 },
+  neutral: { symbols: ['☁️','·'], count: 8,  speed: 0.2 },
+  excited: { symbols: ['⭐','✨'], count: 16, speed: 0.6 },
+  angry:   { symbols: ['🔥','💢'], count: 10, speed: 0.5 },
+  sad:     { symbols: ['💧','🌧️'], count: 14, speed: 0.55 },
+  tired:   { symbols: ['💤','🌑'], count: 8,  speed: 0.18 },
+};
+
+let particles = [];
+let currentParticleDef = PARTICLE_DEFS.happy;
+let animFrame;
+
+function resizeCanvas() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+function makeParticle(def) {
+  return {
+    x:    Math.random() * canvas.width,
+    y:    canvas.height + Math.random() * 100,
+    size: 12 + Math.random() * 14,
+    speed: def.speed * (0.6 + Math.random() * 0.8),
+    drift: (Math.random() - 0.5) * 0.4,
+    symbol: def.symbols[Math.floor(Math.random() * def.symbols.length)],
+    opacity: 0.4 + Math.random() * 0.5,
+    wobble: Math.random() * Math.PI * 2,
+    wobbleSpeed: 0.012 + Math.random() * 0.012,
+  };
+}
+
+function initParticles(def) {
+  particles = [];
+  for (let i = 0; i < def.count; i++) {
+    const p = makeParticle(def);
+    p.y = Math.random() * canvas.height; // 처음엔 화면 전체에 분포
+    particles.push(p);
+  }
+}
+
+function drawParticles() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  particles.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = p.opacity;
+    ctx.font = `${p.size}px serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(p.symbol, p.x + Math.sin(p.wobble) * 6, p.y);
+    ctx.restore();
+
+    p.y      -= p.speed;
+    p.x      += p.drift;
+    p.wobble += p.wobbleSpeed;
+
+    // 화면 위로 나가면 아래서 재생성
+    if (p.y < -40) {
+      const fresh = makeParticle(currentParticleDef);
+      Object.assign(p, fresh);
+    }
+  });
+  animFrame = requestAnimationFrame(drawParticles);
+}
+
+function switchParticles(emotionId) {
+  currentParticleDef = PARTICLE_DEFS[emotionId] || PARTICLE_DEFS.happy;
+  // 기존 파티클을 새 감정 심볼로 교체 (부드럽게)
+  particles.forEach(p => {
+    p.symbol = currentParticleDef.symbols[Math.floor(Math.random() * currentParticleDef.symbols.length)];
+    p.speed  = currentParticleDef.speed * (0.6 + Math.random() * 0.8);
+  });
+}
+
+initParticles(PARTICLE_DEFS.happy);
+drawParticles();
+
 /* ══════════════════════════════════════
    Firebase 초기화
 ══════════════════════════════════════ */
@@ -524,15 +631,24 @@ function render(anim = false) {
   const e = currentEmotion;
   const el = document.getElementById('mainEmoji');
   if (anim) {
+    el.style.animation = 'none';
     el.classList.remove('switching'); void el.offsetWidth;
     el.classList.add('switching');
-    setTimeout(() => el.classList.remove('switching'), 380);
+    setTimeout(() => {
+      el.classList.remove('switching');
+      el.style.animation = '';
+    }, 380);
   }
   el.textContent = e.emoji;
   document.getElementById('countDisplay').textContent = localCounts[e.id] || 0;
   document.getElementById('bg').style.background =
     `linear-gradient(155deg, ${e.c2} 0%, ${e.c1} 55%, ${e.c1} 100%)`;
   document.body.style.color = e.text;
+
+  // 감정별 body 클래스 교체
+  document.body.className = '';
+  document.body.classList.add('mood-' + e.id);
+
   renderQuickBtns();
 }
 
@@ -549,8 +665,6 @@ function renderQuickBtns() {
       spawnFloat(q, false);
       sendChat(q);
       closeQuick();
-      if (Math.random() < 0.20)
-        setTimeout(() => spawnFloat(e.floatEmoji, true), 200 + Math.random() * 400);
     });
     row.appendChild(btn);
   });
@@ -563,6 +677,7 @@ function changeEmotion(idx, anim = false) {
   local.current = idx;
   saveLocal();
   currentEmotion = EMOTIONS[idx];
+  switchParticles(currentEmotion.id);
   setPresence(currentEmotion.id);       // Firebase 업데이트
   subscribeChatChannel(currentEmotion.id);
   document.getElementById('floatLayer').innerHTML = '';
@@ -650,10 +765,8 @@ function spawnFloat(text, isEmoji = false) {
 function sendMessage() {
   const input = document.getElementById('msgInput');
   const text = input.value.trim(); if (!text) return;
-  spawnFloat(text, false);   // 내 화면 즉시 표시
-  sendChat(text);             // Firebase로 전송
-  if (Math.random() < 0.20)
-    setTimeout(() => spawnFloat(currentEmotion.floatEmoji, true), 200 + Math.random() * 400);
+  spawnFloat(text, false);
+  sendChat(text);
   input.value = '';
   input.focus();
   closeQuick();
