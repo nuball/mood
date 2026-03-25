@@ -157,7 +157,7 @@
     #floatLayer { position: fixed; inset: 0; pointer-events: none; z-index: 80; }
     .float-item {
       position: absolute;
-      font-size: 13px; font-weight: 600;
+      font-size: 13px; font-weight: 400;
       white-space: nowrap; opacity: 0;
       animation: floatRise var(--dur, 3s) ease-out forwards;
     }
@@ -269,6 +269,20 @@
       border-radius: 2px; margin: 0 auto 20px;
     }
     .sheet-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; text-align: center; }
+
+    /* 최다 감정 배너 */
+    .top-mood-banner {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px;
+      background: rgba(0,0,0,0.04);
+      border-radius: 16px;
+      padding: 14px 18px;
+      margin-bottom: 22px;
+    }
+    .top-mood-emoji { font-size: 36px; line-height: 1; }
+    .top-mood-info  { display: flex; flex-direction: column; gap: 2px; }
+    .top-mood-label { font-size: 13px; font-weight: 700; opacity: 0.8; }
+    .top-mood-pct   { font-family: 'Space Mono', monospace; font-size: 20px; font-weight: 700; letter-spacing: -1px; }
     .sheet-date  { font-size: 11px; opacity: 0.35; text-align: center; margin-bottom: 20px; }
     .stat-row { display: flex; align-items: center; gap: 10px; margin-bottom: 13px; }
     .stat-emoji { font-size: 18px; width: 26px; text-align: center; flex-shrink: 0; }
@@ -354,10 +368,17 @@
 
 <!-- 오늘 감정 시트 -->
 <div class="sheet-overlay" id="sheetOverlay">
-  <div class="bottom-sheet">
-    <div class="sheet-handle"></div>
+  <div class="bottom-sheet" id="bottomSheet">
+    <div class="sheet-handle" id="sheetHandle"></div>
     <div class="sheet-title">오늘의 감정 현황</div>
     <div class="sheet-date" id="sheetDate"></div>
+    <div class="top-mood-banner" id="topMoodBanner">
+      <span class="top-mood-emoji" id="topMoodEmoji">—</span>
+      <div class="top-mood-info">
+        <span class="top-mood-label" id="topMoodLabel">집계 중...</span>
+        <span class="top-mood-pct"  id="topMoodPct"></span>
+      </div>
+    </div>
     <div id="statsContent"></div>
     <p class="total-line" id="totalLine"></p>
   </div>
@@ -372,12 +393,12 @@ const canvas = document.getElementById('particleCanvas');
 const ctx = canvas.getContext('2d');
 
 const PARTICLE_DEFS = {
-  happy:   { symbols: ['💗','🌸'], count: 12, speed: 0.4 },
-  neutral: { symbols: ['☁️','·'], count: 8,  speed: 0.2 },
-  excited: { symbols: ['⭐','✨'], count: 16, speed: 0.6 },
-  angry:   { symbols: ['🔥','💢'], count: 10, speed: 0.5 },
-  sad:     { symbols: ['💧','🌧️'], count: 14, speed: 0.55 },
-  tired:   { symbols: ['💤','🌑'], count: 8,  speed: 0.18 },
+  happy:   { symbols: ['💗'], count: 7, speed: 0.4 },
+  neutral: { symbols: ['🌫️'], count: 5, speed: 0.2 },
+  excited: { symbols: ['⭐'], count: 9, speed: 0.6 },
+  angry:   { symbols: ['🔥'], count: 6, speed: 0.5 },
+  sad:     { symbols: ['💧'], count: 7, speed: 0.45 },
+  tired:   { symbols: ['💤'], count: 5, speed: 0.18 },
 };
 
 let particles = [];
@@ -446,7 +467,6 @@ function switchParticles(emotionId) {
   });
 }
 
-initParticles(PARTICLE_DEFS.happy);
 drawParticles();
 
 /* ══════════════════════════════════════
@@ -492,7 +512,12 @@ const MY_UID = getUID();
 /* ══════════════════════════════════════
    날짜 / 로컬 상태
 ══════════════════════════════════════ */
-function todayKey() { return new Date().toISOString().slice(0, 10); }
+function todayKey() {
+  // KST(UTC+9) 기준 날짜
+  const now = new Date();
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return kst.toISOString().slice(0, 10);
+}
 
 const LOC_KEY = 'mood_local_v1';
 let local = (() => {
@@ -865,6 +890,18 @@ function openStats() {
     });
 
     document.getElementById('totalLine').textContent = `전체 ${total}번 탭했어요`;
+
+    // 최다 감정 배너
+    const topEmotion = EMOTIONS.reduce((best, e) =>
+      (data[e.id] || 0) > (data[best.id] || 0) ? e : best, EMOTIONS[0]);
+    const topCnt = data[topEmotion.id] || 0;
+    const topPct = total > 0 ? Math.round(topCnt / total * 100) : 0;
+    document.getElementById('topMoodEmoji').textContent = topEmotion.emoji;
+    document.getElementById('topMoodLabel').textContent =
+      total > 0 ? `오늘 가장 많은 감정은 ${topEmotion.label}` : '아직 기록이 없어요';
+    document.getElementById('topMoodPct').textContent =
+      total > 0 ? `${topPct}%  (${topCnt}번)` : '';
+
     document.getElementById('sheetOverlay').classList.add('open');
 
     requestAnimationFrame(() => {
@@ -878,11 +915,52 @@ document.getElementById('sheetOverlay').addEventListener('click', ev => {
   if (ev.target === document.getElementById('sheetOverlay')) closeStats();
 });
 
+/* 바텀시트 드래그 다운 */
+(function() {
+  const sheet   = document.getElementById('bottomSheet');
+  const overlay = document.getElementById('sheetOverlay');
+  let startY = 0, curY = 0, dragging = false;
+
+  function onStart(e) {
+    if (!overlay.classList.contains('open')) return;
+    startY = e.touches ? e.touches[0].clientY : e.clientY;
+    curY = 0; dragging = true;
+    sheet.classList.add('dragging');
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    curY = (e.touches ? e.touches[0].clientY : e.clientY) - startY;
+    if (curY < 0) curY = 0;
+    sheet.style.transform = `translateY(${curY}px)`;
+  }
+  function onEnd() {
+    if (!dragging) return;
+    dragging = false;
+    sheet.classList.remove('dragging');
+    if (curY > 100) {
+      closeStats();
+      sheet.style.transform = '';
+    } else {
+      sheet.style.transform = '';
+    }
+  }
+
+  sheet.addEventListener('touchstart', onStart, { passive: true });
+  document.addEventListener('touchmove',  onMove,  { passive: true });
+  document.addEventListener('touchend',   onEnd);
+  sheet.addEventListener('mousedown', onStart);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup',   onEnd);
+})();
+
 /* ══════════════════════════════════════
    초기화
 ══════════════════════════════════════ */
 setPresence(currentEmotion.id);
 subscribeChatChannel(currentEmotion.id);
+// 파티클 — EMOTIONS/local 정의 이후 초기화
+currentParticleDef = PARTICLE_DEFS[currentEmotion.id];
+initParticles(currentParticleDef);
 render();
 </script>
 </body>
